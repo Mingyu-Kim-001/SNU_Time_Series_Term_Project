@@ -1,0 +1,140 @@
+---
+---
+
+
+
+```{r setup, include=FALSE}
+library(readr)
+library(ggplot2)
+library(rmarkdown)
+library(knitr)
+library(forecast)
+library(tseries)
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, message=FALSE}
+setwd('C:/Users/aksen/OneDrive/바탕 화면/시계열 데이터')
+subway=as.data.frame(read_csv("CARD_SUBWAY_MONTH_201911.csv",locale=locale('ko',encoding="euc-kr")))
+subway2=unique(subway[subway[,2]=="2호선","역명"])
+subway2
+```
+
+
+```{r}
+subway_name = function(data,name,year,month){
+  subway_1=data.frame()
+  for(i in year){
+    for(j in month){
+      filename=paste("CARD_SUBWAY_MONTH_",as.character(i),formatC(j,width=2,flag="0"),sep="",".csv")
+      if(as.character(guess_encoding(filename)[1,1])=="EUC-KR"){
+        subway=as.data.frame(read_csv(filename,locale=locale('ko',encoding="euc-kr")))
+        }
+      else{
+        subway=as.data.frame(read_csv(filename))
+      }
+      colnames(subway)[2]="노선명"
+      #print(filename)
+      subway_1=rbind(subway_1, subway[subway[,"역명"]==name & subway[,"노선명"]=="2호선",])
+    }
+  } 
+  rownames(subway_1)=c(1:nrow(subway_1))
+  subway_1["사용일자"]=lapply(subway_1["사용일자"],as.character)
+  subway_1["사용일자"]=lapply(subway_1["사용일자"],function(x) as.Date(x,format="%Y%m%d"))
+  subway_1["요일"]=lapply(subway_1[1], weekdays)
+  return(subway_1)
+}
+```
+
+***
+
+```{r,warning=F,message=F}
+plot_left = 50 #plot 그릴때 xlim 왼쪽. 적당히 그려보고 조절하는 수밖에 없음
+plot_right = 59 #plot 그릴때 xlim 오른쪽 
+month_list = c(1:12)
+train_year_list = c(2018) #학습시킬 연도
+test_year = 2019 #테스트할 연도 
+station_num_list = c(34,22,39) #역 번호 
+station_name_list = c("신도림","강남","홍대입구") #역 이름 
+
+for(station_num in station_num_list){
+  train = subway_name(subway,subway2[station_num],train_year_list,c(1:12))
+  test = rbind(train,subway_name(subway,subway2[station_num],test_year,c(1)))
+  train_ts=ts(train[5], frequency=7)
+  test_ts=ts(test[5], frequency=7)
+  # unit-root test
+  print(adf.test(train_ts))
+  org_train_fit<-auto.arima(train_ts)
+  print(org_train_fit) #예측 모델을 하나를 세우고, 이 모델로 1월~12월을 월별로 예측. 월별로 모델이 다른게 좀 이상한 것 같아서 월별 모델을 통일하기 위함임. 단 모델은 똑같되, train하는 데이터는 직전 월까지로.
+  
+  for(month_til in month_list){# 이 때까지의 데이터로 다음 달 예측 
+    train_ts=ts(train[5], frequency=7)
+    test_ts=ts(test[5], frequency=7)
+
+    # unit-root test
+    print(adf.test(train_ts))
+    
+    # fitting
+    train_fit<-Arima(train_ts,model=org_train_fit) #같은 모델로, train데이터만 갈아끼운다 
+    print(train_fit) 
+     #잔차분석 
+    res<-train_fit$residuals
+    print(Box.test(res, type="Ljung-Box"))
+    
+    plot(forecast(train_fit,h=30),xlim=c(plot_left+(month_til-1)*4.25,plot_right+(month_til-1)*4.25),main = paste(station_name_list[station_num_list == station_num],"의 ",month_til,"월 예측값과 실제",sep=""))
+    points(test_ts,type='l')
+    acf(res)
+    if(month_til!=12){
+      train = test #직전 월까지 
+      test = rbind(test,subway_name(subway,subway2[station_num],test_year,c(month_til+1))) #직전 월 다음 월까지 
+    }
+  }
+}
+```
+
+```{r,warning=F,message=F}
+plot_left = 101 #plot 그릴때 xlim 왼쪽
+plot_right = 112 #plot 그릴때 xlim 오른쪽 
+month_list = c(1:12)
+train_year_list = c(2017,2018) #학습시킬 연도
+test_year = 2019 #테스트할 연도 
+station_num_list = c(1,39,9,18)
+station_name_list = c("시청","홍대입구","한양대입구","종합운동장")
+
+for(station_num in station_num_list){
+  train = subway_name(subway,subway2[station_num],train_year_list,c(1:12))
+  test = rbind(train,subway_name(subway,subway2[station_num],test_year,c(1)))
+  train_ts=ts(train[5], frequency=7)
+  test_ts=ts(test[5], frequency=7)
+  # unit-root test
+  print(adf.test(train_ts))
+  org_train_fit<-auto.arima(train_ts)
+  print(org_train_fit) #예측 모델을 하나를 세우고, 이 모델로 1월~12월을 월별로 예측. 월별로 모델이 다른게 좀 이상한 것 같아서 월별 모델을 통일하기 위함임. 단 모델은 똑같되, train하는 데이터는 직전 월까지로.
+  
+  for(month_til in month_list){# 이 때까지의 데이터로 다음 달 예측 
+    train_ts=ts(train[5], frequency=7)
+    test_ts=ts(test[5], frequency=7)
+
+    # unit-root test
+    print(adf.test(train_ts))
+    
+    # fitting
+    train_fit<-Arima(train_ts,model=org_train_fit) #같은 모델로, train데이터만 갈아끼운다 
+    print(train_fit) 
+     #잔차분석 
+    res<-train_fit$residuals
+    print(Box.test(res, type="Ljung-Box"))
+    
+    plot(forecast(train_fit,h=30),xlim=c(plot_left+(month_til-1)*4.25,plot_right+(month_til-1)*4.25),main = paste(station_name_list[station_num_list == station_num],"의 ",month_til,"월 예측값과 실제",sep=""))
+    points(test_ts,type='l')
+    acf(res)
+    if(month_til!=12){
+      train = test #직전 월까지 
+      test = rbind(test,subway_name(subway,subway2[station_num],test_year,c(month_til+1))) #직전 월 다음 월까지 
+    }
+  }
+}
+
+```
+
